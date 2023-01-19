@@ -4,11 +4,13 @@ from dataclasses import dataclass
 import mimetypes
 from litehttp.exceptions.server_exception.server_e import TemplateNotFound, RenderFileDataTypeError, PathNotFoundWeb, \
     SetHandlersError
-from .route.routing import UrlCollectorGet, UrlCollectorPost, MiddlewareCollector
+from .route.routing import UrlCollectorGet, UrlCollectorPost, MiddlewareCollector, CompareUrlsIdentity
 from conf.project import STATICFILES_PATH
 from .request_obj import Request
 from .middlewares import Middleware
 from typing import Type
+from cgi import FieldStorage
+
 
 
 @dataclass
@@ -67,24 +69,32 @@ class Server:
             return self.f_render.file_render(path)
 
         # render html
-        if self.full_url != '/favicon.ico' and self.full_url in list(self.url_collector_get.path.keys()):
-            self.run_before_middlewares()
-            return self.url_collector_get.path[self.full_url](self.request)
+        for route_path in list(self.url_collector_get.path.keys()):
+            compare_urls = CompareUrlsIdentity(self.full_url, route_path)
+            if self.full_url != '/favicon.ico' and compare_urls.compare():
+                if compare_urls.is_slug_url():
+                    # set url args
+                    self.request.set_url_arguments(**{compare_urls.slug_name: compare_urls.slug_value})
+                self.run_before_middlewares()
+                return self.url_collector_get.path[route_path](self.request)
 
         # if path not found
         return self.f_render.html_file_render(PathNotFoundWeb('Server.get_method', self.full_url).for_web(),
                                               code="404 Not found")
 
     def post_method(self):
-        if self.full_url != '/favicon.ico' and self.full_url.rfind('.') != -1:
-            path = self.full_url.strip('/')
-            return self.f_render.file_render(path)
-
-        if self.full_url != '/favicon.ico' and self.full_url in list(self.url_collector_post.path.keys()):
-            return self.url_collector_post.path[self.full_url](self.request)
+        for route_path in list(self.url_collector_get.path.keys()):
+            compare_urls = CompareUrlsIdentity(self.full_url, route_path)
+            if self.full_url != '/favicon.ico' and compare_urls.compare():
+                self.request.set_form_data(self.parse_post_data(self.environ))
+                return self.url_collector_post.path[route_path](self.request)
 
         return self.f_render.html_file_render(PathNotFoundWeb('Server.get_method', self.full_url).for_web(),
                                               code="404 Not found")
+
+    def parse_post_data(self, env) -> FieldStorage:
+        form_data = FieldStorage(fp=env['wsgi.input'], environ=env, keep_blank_values=True)
+        return form_data
 
     def get(self, url, handler):
         self.url_collector_get.append(url, handler)
