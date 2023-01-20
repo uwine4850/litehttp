@@ -2,11 +2,22 @@ from cgi import FieldStorage
 
 
 class Request:
+    _values_storage = {}
+
     def __init__(self, response):
         self.response = response
         self.url = ''
         self.form: FormData = None
         self.url_arguments = {}
+
+    def append_value_to_storage(self, **kwargs):
+        self._values_storage.update(kwargs)
+
+    def get_storage_value(self, key: str):
+        return self._values_storage.get(key)
+
+    def clear_storage(self):
+        self._values_storage.clear()
 
     def set_url_arguments(self, **kwargs):
         self.url_arguments.update(kwargs)
